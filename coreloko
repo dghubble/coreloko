@@ -1,0 +1,194 @@
+#!/bin/bash
+# Manage VM nodes which have a specific set of hardware attributes.
+set -eo pipefail
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+GPG=${GPG:-/usr/bin/gpg}
+VOLUME_POOL=default
+VOLUME_DIR=/var/lib/libvirt/images
+
+CHANNEL=beta
+VERSION=1235.1.0
+BASE_URL=https://$CHANNEL.release.core-os.net/amd64-usr/$VERSION
+
+function main {
+  case "$1" in
+    "init") init;;
+    "userdata") userdata;;
+    "create") create;;
+    "start") start;;
+    "reboot") reboot;;
+    "shutdown") shutdown;;
+    "poweroff") poweroff;;
+    "destroy") destroy;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+}
+
+function usage {
+  echo "USAGE: ${0##*/} <command>"
+  echo "Commands:"
+  echo -e "\tinit\t\tdownload and verify CoreOS images"
+  echo -e "\tuserdata\tgenerate userdata for nodes"
+  echo -e "\tcreate\t\tcreate QEMU/KVM nodes"
+  echo -e "\tstart\t\tstart the QEMU/KVM nodes"
+  echo -e "\treboot\t\treboot the QEMU/KVM nodes"
+  echo -e "\tshutdown\tshutdown the QEMU/KVM nodes"
+  echo -e "\tpoweroff\tpoweroff the QEMU/KVM nodes"
+  echo -e "\tdestroy\t\tdestroy the QEMU/KVM nodes"
+}
+
+function require_sudo {
+  if [ "$EUID" -ne 0 ]
+    then echo "Please run as root"
+    exit
+  fi
+}
+
+function require_user {
+  if [ "$EUID" -eq 0 ]
+    then echo "Please don't run as root"
+    exit
+  fi
+}
+
+# Download, verify, and decompress CoreOS images
+function init {
+  require_sudo
+
+  if [ ! -d $VOLUME_DIR ]; then
+    echo "Creating $VOLUME_DIR"
+    mkdir -p $VOLUME_DIR
+  fi
+
+  # QEMU image
+  echo "Downloading CoreOS $CHANNEL $VERSION coreos_production_qemu_image.img.bz2..."
+  curl -# $BASE_URL/coreos_production_qemu_image.img.bz2 -o $VOLUME_DIR/coreos_production_qemu_image.img.bz2
+  echo "Downloading coreos_production_qemu_image.img.bz2.sig"
+  curl -# $BASE_URL/coreos_production_qemu_image.img.bz2.sig -o $VOLUME_DIR/coreos_production_qemu_image.img.bz2.sig
+  
+  echo "OpenPGP Verify"
+  $GPG --verify $VOLUME_DIR/coreos_production_qemu_image.img.bz2.sig
+  
+  echo "Decompressing bz2 to raw image"
+  bzip2 -d -f $VOLUME_DIR/coreos_production_qemu_image.img.bz2
+  rm $VOLUME_DIR/coreos_production_qemu_image.img.bz2.sig
+}
+
+# TODO: Derive node list and user-data from coreos-baremtal examples
+nodes=(node1 node2 node3)
+
+# Generate user_data for nodes
+function userdata {
+  require_user
+
+  for NODE in ${nodes[@]}; do
+    if [ ! -d $NODE/openstack/latest ]; then
+      mkdir -p $NODE/openstack/latest
+    fi
+    find_ssh_keys | write_ssh_keys > $NODE/openstack/latest/user_data
+  done
+}
+
+# Create a cluster nodes
+function create {
+  require_sudo
+  for node in ${nodes[@]}; do
+    create_vm $node
+  done
+}
+
+function create_vm {
+  NODE=$1
+  create_disk $NODE
+  virt-install --connect qemu:///system \
+      --name $NODE \
+      --vcpus=1 \
+      --memory=1024 \
+      --disk path=$VOLUME_DIR/$NODE.qcow2,format=qcow2,bus=virtio \
+      --filesystem $PWD/$NODE,config-2,type=mount,mode=squash \
+      --network=bridge:virbr0 \
+      --boot hd \
+      --os-type=linux \
+      --os-variant=generic \
+      --noautoconsole
+}
+
+function create_disk {
+  NODE=$1
+  if [ ! -f $VOLUME_DIR/$NODE.qcow2 ]; then
+    # create a copy-on-write image based on the CoreOS QEMU image
+    qemu-img create -f qcow2 -o backing_file=$VOLUME_DIR/coreos_production_qemu_image.img $VOLUME_DIR/$NODE.qcow2
+  fi
+}
+
+# Start cluster nodes
+function start {
+  require_sudo
+  for node in ${nodes[@]}; do
+    virsh start $node
+  done
+}
+
+# Reboot cluster nodes
+function reboot {
+  require_sudo
+  for node in ${nodes[@]}; do
+    virsh reboot $node
+  done
+}
+
+# Shutdown cluster nodes
+function shutdown {
+  require_sudo
+  for node in ${nodes[@]}; do
+    virsh shutdown $node
+  done
+}
+
+# Poweroff cluster nodes
+function poweroff {
+  require_sudo
+  for node in ${nodes[@]}; do
+    virsh destroy $node
+  done
+}
+
+# Destroy cluster nodes
+function destroy {
+  require_sudo
+  for node in ${nodes[@]}; do
+    virsh destroy $node
+  done
+  for node in ${nodes[@]}; do
+    virsh undefine $node
+  done
+  virsh pool-refresh default
+  for node in ${nodes[@]}; do
+    virsh vol-delete --pool $VOLUME_POOL $node.qcow2
+  done
+}
+
+function find_ssh_keys {
+  if [ -S "$SSH_AUTH_SOCK" ]; then
+    ssh-add -L
+  fi
+  for default_key in ~/.ssh/id_*.pub; do
+    if [ ! -f "$default_key" ]; then
+        continue
+    fi
+    cat "$default_key"
+  done
+}
+
+function write_ssh_keys {
+  echo "#cloud-config"
+  echo "ssh_authorized_keys:"
+  sed -e 's/^/ - /'
+}
+
+main $@
