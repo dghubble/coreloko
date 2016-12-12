@@ -8,8 +8,8 @@ GPG=${GPG:-/usr/bin/gpg}
 VOLUME_POOL=default
 VOLUME_DIR=/var/lib/libvirt/images
 
-CHANNEL=beta
-VERSION=1235.1.0
+CHANNEL=alpha
+VERSION=1248.1.0
 BASE_URL=https://$CHANNEL.release.core-os.net/amd64-usr/$VERSION
 
 function main {
@@ -79,7 +79,7 @@ function init {
   rm $VOLUME_DIR/coreos_production_qemu_image.img.bz2.sig
 }
 
-# TODO: Derive node list and user-data from coreos-baremtal examples
+# TODO: Derive node list and user-data from coreos-baremetal examples
 nodes=(node1 node2 node3)
 
 # Generate user_data for nodes

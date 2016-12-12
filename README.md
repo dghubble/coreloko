@@ -41,11 +41,6 @@ Here is a mechanism allowing Ignition to be used instead of cloud-config (discou
 
 Insert a [pass-through](https://libvirt.org/drvqemu.html#qemucommand) QEMU argument `fw_cfg` to load an Ignition file as a QEMU [firmware](https://github.com/qemu/qemu/blob/master/docs/specs/fw_cfg.txt) config device.
 
-    <qemu:commandline>
-        <qemu:arg value='-newarg'/>
-        <qemu:env name='QEMU_ENV' value='VAL'/>
-    </qemu:commandline>
-
     <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
       <name>some-name</name>
       ...
@@ -70,4 +65,10 @@ Destroy all nodes in the cluster.
 
 ## Plain QEMU
 
-You can use qemu commands directly via `coreos_production_qemu.sh` which has a `-i` Ignition flag. `libvirt` will probably be preferred in this repo.
+You can use qemu commands directly via `coreos_production_qemu.sh` which has a `-i` Ignition flag.
+
+    wget https://alpha.release.core-os.net/amd64-usr/1248.1.0/coreos_production_qemu_image.img.bz2
+    bzip2 -d coreos_production_qemu_image.img.bz2
+    ./coreos_production_qemu.sh -i ./hello.ign
+
+`libvirt` will probably be preferred in this repo.
