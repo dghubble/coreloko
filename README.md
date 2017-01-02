@@ -40,12 +40,3 @@ Install the QEMU/KVM and libvirt package dependencies.
     # Debian/Ubuntu
     sudo apt-get install virt-manager virtinst qemu-kvm
 
-## Plain QEMU
-
-You can use qemu commands directly via `coreos_production_qemu.sh` which has a `-i` Ignition flag.
-
-    wget https://alpha.release.core-os.net/amd64-usr/1248.1.0/coreos_production_qemu_image.img.bz2
-    bzip2 -d coreos_production_qemu_image.img.bz2
-    ./coreos_production_qemu.sh -i ./hello.ign
-
-`libvirt` will probably be preferred in this repo.
