@@ -86,11 +86,11 @@ nodes=(node1 node2 node3)
 function userdata {
   require_user
 
-  for NODE in ${nodes[@]}; do
-    if [ ! -d $NODE/openstack/latest ]; then
-      mkdir -p $NODE/openstack/latest
+  for node in ${nodes[@]}; do
+    if [ ! -d data ]; then
+      mkdir -p data
     fi
-    find_ssh_keys | write_ssh_keys > $NODE/openstack/latest/user_data
+    find_ssh_keys | write_ssh_keys > data/$node.ign
   done
 }
 
@@ -105,17 +105,25 @@ function create {
 function create_vm {
   NODE=$1
   create_disk $NODE
-  virt-install --connect qemu:///system \
+
+  NS="type='kvm' xmlns:qemu='http:\/\/libvirt.org\/schemas\/domain\/qemu\/1.0'"
+  QEMU_FW_CFG="<qemu:commandline>\n  <qemu:arg value='-fw_cfg'/>\n  <qemu:arg value='name=opt/com.coreos/config,file=$PWD/data/$NODE.ign'/>\n</qemu:commandline>"
+
+  virsh define <(virt-install --connect qemu:///system \
       --name $NODE \
       --vcpus=1 \
       --memory=1024 \
       --disk path=$VOLUME_DIR/$NODE.qcow2,format=qcow2,bus=virtio \
-      --filesystem $PWD/$NODE,config-2,type=mount,mode=squash \
       --network=bridge:virbr0 \
       --boot hd \
       --os-type=linux \
       --os-variant=generic \
-      --noautoconsole
+      --noautoconsole \
+      --print-xml \
+  | sed -e "s/type=\"kvm\"/$NS/" \
+  | sed "/<\/devices>/a $QEMU_FW_CFG")
+
+  virsh start $NODE
 }
 
 function create_disk {
@@ -186,9 +194,11 @@ function find_ssh_keys {
 }
 
 function write_ssh_keys {
-  echo "#cloud-config"
-  echo "ssh_authorized_keys:"
-  sed -e 's/^/ - /'
+  echo -n '{"ignition": { "version": "2.0.0" },"passwd": {"users": [{"name": "core", "sshAuthorizedKeys": ['
+  readarray keys
+  out=$(printf ',"%s"\n' "${keys[@]}")
+  echo -n ${out:1}
+  echo ']}]}}'
 }
 
 main $@
