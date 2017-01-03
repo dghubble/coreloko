@@ -1,6 +1,6 @@
 #!/bin/bash
 # Manage VM nodes which have a specific set of hardware attributes.
-set -eo pipefail
+set -o pipefail
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -105,9 +105,12 @@ function create {
 function create_vm {
   NODE=$1
   create_disk $NODE
+  # copy Ignition into a root directory to avoid any livirtd execute/search
+  # errors arising from user's parent directory permissions
+  cp data/$NODE.ign $VOLUME_DIR/
 
   NS="type='kvm' xmlns:qemu='http:\/\/libvirt.org\/schemas\/domain\/qemu\/1.0'"
-  QEMU_FW_CFG="<qemu:commandline>\n  <qemu:arg value='-fw_cfg'/>\n  <qemu:arg value='name=opt/com.coreos/config,file=$PWD/data/$NODE.ign'/>\n</qemu:commandline>"
+  QEMU_FW_CFG="<qemu:commandline>\n  <qemu:arg value='-fw_cfg'/>\n  <qemu:arg value='name=opt/com.coreos/config,file=$VOLUME_DIR/$NODE.ign'/>\n</qemu:commandline>"
 
   virsh define <(virt-install --connect qemu:///system \
       --name $NODE \
@@ -178,6 +181,7 @@ function destroy {
   virsh pool-refresh default
   for node in ${nodes[@]}; do
     virsh vol-delete --pool $VOLUME_POOL $node.qcow2
+    virsh vol-delete --pool $VOLUME_POOL $node.ign
   done
 }
 
