@@ -120,7 +120,7 @@ function create_vm {
       --network=bridge:virbr0 \
       --boot hd \
       --os-type=linux \
-      --os-variant=generic \
+      --os-variant=virtio26 \
       --noautoconsole \
       --print-xml \
   | sed -e "s/type=\"kvm\"/$NS/" \
