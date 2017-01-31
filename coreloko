@@ -109,22 +109,26 @@ function create_vm {
   # errors arising from user's parent directory permissions
   cp data/$NODE.ign $VOLUME_DIR/
 
-  NS="type='kvm' xmlns:qemu='http:\/\/libvirt.org\/schemas\/domain\/qemu\/1.0'"
-  QEMU_FW_CFG="<qemu:commandline>\n  <qemu:arg value='-fw_cfg'/>\n  <qemu:arg value='name=opt/com.coreos/config,file=$VOLUME_DIR/$NODE.ign'/>\n</qemu:commandline>"
-
-  virsh define <(virt-install --connect qemu:///system \
+  virt-install --connect qemu:///system \
       --name $NODE \
       --vcpus=1 \
       --memory=1024 \
       --disk path=$VOLUME_DIR/$NODE.qcow2,format=qcow2,bus=virtio \
       --network=bridge:virbr0 \
       --boot hd \
+      --graphics=none \
       --os-type=linux \
       --os-variant=virtio26 \
       --noautoconsole \
       --print-xml \
-  | sed -e "s/type=\"kvm\"/$NS/" \
-  | sed "/<\/devices>/a $QEMU_FW_CFG")
+  | xmlstarlet ed -P -L -i "//domain" -t attr --name "xmlns:qemu" --value "http://libvirt.org/schemas/domain/qemu/1.0" \
+  | xmlstarlet ed -P -L -s "//domain" -t elem -n "qemu:commandline" \
+  | xmlstarlet ed -P -L -s "//domain/qemu:commandline" -t elem -n "qemu:arg" \
+  | xmlstarlet ed -P -L -s "(//domain/qemu:commandline/qemu:arg)[1]" -t attr -n "value" --value "-fw_cfg" \
+  | xmlstarlet ed -P -L -s "//domain/qemu:commandline" -t elem --name "qemu:arg" \
+  | xmlstarlet ed -P -L -s "(//domain/qemu:commandline/qemu:arg)[2]" -t attr -n "value" --value "name=opt/com.coreos/config,file=${VOLUME_DIR}/${NODE}.ign" \
+    > data/$NODE.domain.xml
+  virsh define data/$NODE.domain.xml
 
   virsh start $NODE
 }
@@ -182,6 +186,9 @@ function destroy {
   for node in ${nodes[@]}; do
     virsh vol-delete --pool $VOLUME_POOL $node.qcow2
     virsh vol-delete --pool $VOLUME_POOL $node.ign
+  done
+  for node in ${nodes[@]}; do
+    rm -f "./data/${node}.domain.xml" || true
   done
 }
 
