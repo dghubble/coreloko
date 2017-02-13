@@ -112,7 +112,7 @@ function create_vm {
   NS="type='kvm' xmlns:qemu='http:\/\/libvirt.org\/schemas\/domain\/qemu\/1.0'"
   QEMU_FW_CFG="<qemu:commandline>\n  <qemu:arg value='-fw_cfg'/>\n  <qemu:arg value='name=opt/com.coreos/config,file=$VOLUME_DIR/$NODE.ign'/>\n</qemu:commandline>"
 
-  virsh define <(virt-install --connect qemu:///system \
+  virt-install --connect qemu:///system \
       --name $NODE \
       --vcpus=1 \
       --memory=1024 \
@@ -124,8 +124,10 @@ function create_vm {
       --noautoconsole \
       --print-xml \
   | sed -e "s/type=\"kvm\"/$NS/" \
-  | sed "/<\/devices>/a $QEMU_FW_CFG")
+  | sed "/<\/devices>/a $QEMU_FW_CFG" \
+  > data/$NODE.domain.xml
 
+  virsh define data/$NODE.domain.xml
   virsh start $NODE
 }
 
